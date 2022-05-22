@@ -21,18 +21,25 @@ class Node:
     def F(self):
         return self.H + self.G
 
-    def set_parent(self, node):
+    def set_parent(self, node: "Node"):
         self.parent = node
 
     def to_tuple(self) -> Tuple[int, int]:
         return (self.x, self.y)
 
-    def __str__(self) -> str:
-        return f"({self.x}, {self.y})"
+    def set_is_block(self, b: bool):
+        self.is_block = b
 
-    # Manhattan distance on a square grid
-# def get_distance(a: Node, b: Node) -> int:
-#     return abs(a.x - b.x) + abs(a.y - b.y)
+    def __str__(self) -> str:
+        return "{X, X}" if self.is_block else f"({self.x}, {self.y})"
+
+    def __lt__(self, other) -> bool:
+        return self.F() < other.F() or (self.F() == other.F() and self.H < other.H)
+
+
+# Manhattan distance on a square grid
+def get_man_distance(a: Node, b: Node) -> int:
+    return abs(a.x - b.x) + abs(a.y - b.y)
 
 
 def get_distance(a: Node, b: Node) -> int:
@@ -43,28 +50,31 @@ def get_distance(a: Node, b: Node) -> int:
 
 
 class Graph:
-    def __init__(self, width, height) -> None:
-        grid = [[Node(x, y) for x in range(width)] for y in range(height)]
+    def __init__(self, width: int, height: int, cell_count: int) -> None:
+        self.width, self.height, self.cell_count = width, height, cell_count
+        cell_size = width // cell_count
+        self.cell_size = cell_size
+
+        grid = [[Node(x, y) for x in range(0, width, cell_size)]
+                for y in range(0, height, cell_size)]
         self.grid = grid
-        self.rows = width
-        self.columns = height
 
     def get_node(self, x: int, y: int) -> Node:
-        if not self.in_row_range(x) or not self.in_col_range(y):
+        if not self.in_col_range(x) or not self.in_row_range(y):
             print(
-                f"Index out of range: ({x}, {y}) not in ([0..{self.rows - 1}], [0..{self.columns - 1}])")
+                f"Index out of range: ({x}, {y}) not in ([0..{self.width - 1}], [0..{self.height - 1}])")
 
         return self.grid[y][x]
 
-    def in_row_range(self, value: int) -> bool:
-        return 0 <= value <= self.rows - 1
-
     def in_col_range(self, value: int) -> bool:
-        return 0 <= value <= self.columns - 1
+        return 0 <= value <= self.width - 1
 
-    def neighbors(self, node: Node) -> List[Node]:
+    def in_row_range(self, value: int) -> bool:
+        return 0 <= value <= self.height - 1
+
+    def get_neighbors(self, node: Node) -> List[Node]:
         x, y = node.to_tuple()
-        dirs = [
+        dirs: List[Tuple[int, int]] = [
             (-1, -1), (0, -1), (1, -1),
             (-1, 0), (1, 0),
             (-1, 1),  (0, 1), (1, 1),
@@ -73,46 +83,37 @@ class Graph:
         neighbor_list = []
 
         for dir in dirs:
-            dx, dy = dir
+            dx, dy = dir[0] * self.cell_size, dir[1] * self.cell_size
             next_x, next_y = x + dx, y + dy
-            if not self.in_row_range(next_x) or not self.in_col_range(next_y):
+
+            if not self.in_col_range(next_x) or not self.in_row_range(next_y):
                 continue
+
             neighbor = self.grid[next_y][next_x]
             neighbor_list.append(neighbor)
 
         return neighbor_list
 
     def print_graph(self):
-        for y in range(self.columns):
-            row = [str(n) for n in self.grid[y]]
-            print(f"{' '.join(row)}")
+        for rows in self.grid:
+            row = [str(n) for n in rows]
+            print(f"{''.join(row)}")
 
 
-graph = Graph(4, 4)
-start = graph.get_node(0, 0)
-goal = graph.get_node(3, 3)
-graph.print_graph()
+def a_star(start_node: Node, goal_node: Node, graph: Graph) -> List[Node]:
+    closed_nodes: List[Node] = []
+    open_nodes: List[Node] = []
 
-
-open_nodes: List[Node] = []
-closed_nodes: List[Node] = []
-
-
-def a_star(start_node: Node, goal_node: Node) -> List[Node]:
     start_node.G = 0
     start_node.H = 0
-    open_nodes.append(start_node)
 
-    while len(open_nodes) > 0:
-        # sorted(open_nodes, key=lambda n: n.get_F())
+    pq = PriorityQueue()
+    pq.put((0, start_node))
 
-        current = open_nodes[0]
-        for t in open_nodes:
-            if t.F() < current.F() or (t.F() == current.F() and t.H < current.H):
-                current = t
-
-        closed_nodes.append(current)
+    while not pq.empty():
+        current: Node = pq.get()[1]
         open_nodes.remove(current)
+        closed_nodes.append(current)
 
         if current == goal_node:
             p_node = current
@@ -121,31 +122,46 @@ def a_star(start_node: Node, goal_node: Node) -> List[Node]:
                 path.append(p_node)
                 p_node = p_node.parent
 
+            path.append(start_node)
             path.reverse()
             return path
 
-        for neighbor in graph.neighbors(current):
+        for neighbor in graph.get_neighbors(current):
             if neighbor in closed_nodes or neighbor.is_block:
                 continue
-
-            in_search = neighbor in open_nodes
 
             # could use weights here
             new_cost = current.G + get_distance(current, neighbor)
 
-            if new_cost < neighbor.G or not in_search:
+            if new_cost < neighbor.G:
                 neighbor.set_G(new_cost)
-                neighbor.parent = current
-                print(f"set parent: {current} > {neighbor}")
+                neighbor.set_parent(current)
+                # print(f"{current} -> {neighbor}")
 
-            if not in_search:
-                neighbor.set_H(get_distance(neighbor, goal_node))
-                open_nodes.append(neighbor)
+            neighbor.set_H(get_distance(neighbor, goal_node))
+            pq.put((neighbor.F(), neighbor))
+            open_nodes.append(neighbor)
+            # print(f"adding {neighbor.F()} {neighbor} to pq\n")
 
     return []
 
 
-path = a_star(start, goal)
-if len(path) > 0:
-    for p in path:
-        print(f"{p}")
+def main():
+    if __name__ != "__main__":
+        return
+    graph = Graph(8, 8, 8)
+    print(f"cells: {graph.cell_count}, size: {graph.cell_size}")
+    start = graph.get_node(0, 0)
+    goal = graph.get_node(6, 7)
+    graph.grid[1][1].set_is_block(True)
+    graph.grid[2][1].set_is_block(True)
+    graph.grid[2][2].set_is_block(True)
+    graph.print_graph()
+
+    path = a_star(start, goal, graph)
+    if len(path) > 0:
+        for p in path:
+            print(f"{p}")
+
+
+main()
