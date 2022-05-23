@@ -1,119 +1,200 @@
-from typing import Tuple
+from typing import List, Tuple
 import pygame as pg
-from astar import Graph, Node, a_star
-
 ColorTuple = Tuple[int, int, int]
 
-
-RED = (217, 25, 25)
-GREEN = (25, 217, 25)
-BLUE = (90, 25, 217)
-WHITE = (255, 255, 255)
+BORDER = (30, 30, 30)
 BLACK = (0, 0, 0)
-PURPLE = (190, 20, 237)
+WHITE = (240, 240, 240)
+RED = (250, 30, 100)
+GREEN = (30, 250, 90)
+BLUE = (30, 30, 250)
+ORANGE = (230, 180, 30)
+
+EMPTY = 1
+START = 2
+GOAL = 3
+BLOCK = 4
+NEIGHBOR = 5
+PATH = 6
 
 
-class Slot:
-    rect: pg.Rect
-    color: ColorTuple
+class Node:
+    def __init__(self, x: int, y: int, cell_size: int) -> None:
+        self.x, self.y = x, y
+        self.G = self.H = float("inf")
+        self.parent = None
+        # pygame
+        self.rect = pg.Rect(x, y, cell_size, cell_size)
+        self.set_state(EMPTY)
 
-    def __init__(self, x: int, y: int, width: int, height: int, color=WHITE) -> None:
-        self.rect = pg.Rect(x, y, width, height)
-        self.color = color
+    # distance cost from start_node
+    def set_G(self, g: int):
+        self.G = g
+
+    # heuristic, optimistic distance from node the end node
+    def set_H(self, h: int):
+        self.H = h
+
+    def F(self):
+        return self.H + self.G
+
+    def set_parent(self, node: "Node"):
+        self.parent = node
+
+    def to_tuple(self) -> Tuple[int, int]:
+        return (self.x, self.y)
+
+    def set_is_block(self, is_block: bool):
+        self.is_block = is_block
+
+    def draw(self, SCREEN):
+        pg.draw.rect(SCREEN, self.color, self.rect)
+        pg.draw.rect(SCREEN, BORDER, self.rect, 1)
 
     def set_color(self, color):
         self.color = color
 
-    def clear(self):
-        self.set_color(WHITE)
+    def reset(self):
+        self.G = self.H = float("inf")
+        self.parent = None
+        self.set_state(EMPTY)
+
+    def set_state(self, state: int):
+        if state is EMPTY:
+            self.set_color(BLACK)
+            self.set_is_block(False)
+        if state is BLOCK:
+            self.set_color(WHITE)
+            self.set_is_block(True)
+        if state is NEIGHBOR:
+            self.set_color(BLUE)
+        if state is START:
+            self.set_color(GREEN)
+        if state is GOAL:
+            self.set_color(RED)
+        if state is PATH:
+            self.set_color(ORANGE)
+
+    def __str__(self) -> str:
+        return "{X, X}" if self.is_block else f"({self.x}, {self.y})"
+
+    def __lt__(self, other) -> bool:
+        return self.F() < other.F() or (self.F() == other.F() and self.H < other.H)
 
 
-class Grid:
-    width: int
-    height: int
-    cell_size: int
-    rows_count: int
-    cols_count: int
+class Graph:
+    start: Node
+    goal: Node
 
-    def __init__(self, width, height, cell_size) -> None:
-        self.width, self.height, self.cell_count = width, height, cell_size
+    def __init__(self, width: int, height: int, cell_size: int, SCREEN: pg.Surface) -> None:
+        self.width, self.height, self.cell_size = width, height, cell_size
+        self.cell_size = cell_size
         self.rows_count = height // cell_size
         self.cols_count = width // cell_size
-        self.cell_size = cell_size
-        # make grid of slots
-        self.slots = [[Slot(x, y, cell_size, cell_size) for x in range(
-            0, width, cell_size)] for y in range(0, height, cell_size)]
-        # make grid of nodes (graph)
-        self.graph = Graph(width, height, cell_size)
-        self.start = None
-        self.goal = None
+        self.SCREEN = SCREEN
+        self.start = self.goal = None
 
-    def get_slot(self, x, y) -> Slot:
-        return self.slots[y][x]
+        grid = [[Node(x, y, cell_size) for x in range(0, width, cell_size)]
+                for y in range(0, height, cell_size)]
+        self.grid = grid
 
-    def wcords_2_gcords(self, wx: int, wy: int) -> Tuple[int, int]:
-        return (wx//self.cell_size, wy//self.cell_size)
+    def get_node(self, x: int, y: int) -> Node:
+        if not self.in_cols_range(x) or not self.in_rows_range(y):
+            print(
+                f"Index out of range: ({x}, {y}) not in ([0..{self.width - 1}], [0..{self.height - 1}])")
+        return self.grid[y][x]
 
-    def toggle_block(self, gx: int, gy: int):
-        node, slot = self.graph.get_node(gx, gy), self.get_slot(gx, gy)
-        node.set_is_block(not node.is_block)
-        slot.set_color(BLACK if node.is_block else WHITE)
+    def in_cols_range(self, x: int) -> bool:
+        return 0 <= x <= self.cols_count - 1
 
-    def set_block(self, gx: int, gy: int):
-        self.graph.get_node(gx, gy).set_is_block(True)
-        self.get_slot(gx, gy).set_color(BLACK)
+    def in_rows_range(self, y: int) -> bool:
+        return 0 <= y <= self.rows_count - 1
 
-    def set_not_block(self, gx: int, gy: int):
-        self.graph.get_node(gx, gy).set_is_block(False)
-        self.get_slot(gx, gy).set_color(WHITE)
+    def get_neighbors(self, node: Node) -> List[Node]:
+        x, y = node.to_tuple()
+        x, y = x // self.cell_size, y // self.cell_size
+        dirs: List[Tuple[int, int]] = [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0), (1, 0),
+            (-1, 1),  (0, 1), (1, 1),
+        ]
 
-    def node_to_slot(self, node: Node) -> "Slot":
-        gx, gy = self.wcords_2_gcords(node.x, node.y)
-        return self.get_slot(gx, gy)
+        neighbor_list = []
 
-    def set_start(self, gx: int, gy: int):
-        node = self.graph.get_node(gx, gy)
+        for dir in dirs:
+            dx, dy = dir
+            next_x, next_y = x + dx, y + dy
+            if not self.in_cols_range(next_x) or not self.in_rows_range(next_y):
+                continue
+
+            neighbor = self.grid[next_y][next_x]
+
+            if neighbor.is_block:
+                continue
+
+            neighbor_list.append(neighbor)
+
+        return neighbor_list
+
+    def draw_grid(self):
+        for row in self.grid:
+            for node in row:
+                node.draw(self.SCREEN)
+        pg.display.update()
+
+    def update_node(self, node: Node):
+        node.draw(self.SCREEN)
+        pg.display.update()
+
+    def set_block(self, node: Node, b: bool):
+        if node != self.start and node != self.goal:
+            node.set_state(BLOCK if b else EMPTY)
+            self.update_node(node)
+
+    def set_start(self, gx, gy):
+        node = self.get_node(gx, gy)
         if node.is_block or node == self.goal:
             return
 
-        if self.start != None:
-            self.node_to_slot(self.start).clear()
+        if self.start == None:
+            self.start = node
+            self.start.set_state(START)
+        else:
+            self.start, node = node, self.start
+            node.set_state(EMPTY)
+            self.start.set_state(START)
 
-        self.start = node
-        self.node_to_slot(node).set_color(GREEN)
+        self.start.draw(self.SCREEN)
+        node.draw(self.SCREEN)
+        pg.display.update()
 
-    def set_goal(self, gx: int, gy: int):
-        node = self.graph.get_node(gx, gy)
+    def set_goal(self, gx, gy):
+        node = self.get_node(gx, gy)
         if node.is_block or node == self.start:
             return
 
-        if self.goal != None:
-            self.node_to_slot(self.goal).clear()
+        if self.goal == None:
+            self.goal = node
+            self.goal.set_state(GOAL)
+        else:
+            self.goal, node = node, self.goal
+            node.set_state(EMPTY)
+            self.goal.set_state(GOAL)
 
-        self.goal = node
-        self.node_to_slot(node).set_color(RED)
+        self.goal.draw(self.SCREEN)
+        node.draw(self.SCREEN)
+        pg.display.update()
 
-    def clear(self):
-        for row in self.graph.grid:
+    def clear_grid(self):
+        for row in self.grid:
             for node in row:
                 if node.is_block or node == self.start or node == self.goal:
                     continue
-                self.node_to_slot(node).clear()
+                node.reset()
+                node.draw(self.SCREEN)
+        pg.display.update()
 
-    def calculate_path(self):
-        path = a_star(self.start, self.goal, self.graph)
-
-        for n in path[1:-1]:
-            self.node_to_slot(n).set_color(PURPLE)
-
-        return len(path) > 0
-
-
-# functions
-
-def draw_rect(r: pg.Rect, color: pg.Color | ColorTuple, surface: pg.Surface):
-    pg.draw.rect(surface, color, r)
-
-
-def move_rect(r: pg.Rect, new_pos: Tuple[int, int]):
-    r.left, r.top = new_pos
+    def print_graph(self):
+        for rows in self.grid:
+            row = [str(n) for n in rows]
+            print(f"{''.join(row)}")

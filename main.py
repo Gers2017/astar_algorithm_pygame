@@ -1,53 +1,25 @@
 from typing import Tuple
 import pygame as pg
 from pygame.locals import *
-from astar import PURPLE, GREEN, RED, Graph, Node, a_star
+from astar import a_star
+from game_structs import Graph, PATH
 
 width, height = 1024, 704
 size = (width, height)
 cell_size = 16
 SCREEN = pg.display.set_mode(size)
 graph = Graph(width, height, cell_size, SCREEN)
+
 running = True
 pg.display.set_caption("pygame baby")
 clock = pg.time.Clock()
 
-start_node = graph.get_node(0, 0)
-start_node.set_color(GREEN)
-goal_node = graph.get_node(graph.cols_count - 1, graph.rows_count - 1)
-goal_node.set_color(RED)
-
-
-def draw_rect(color, rect):
-    pg.draw.rect(SCREEN, color, rect)
+graph.set_start(0, 0)
+graph.set_goal(graph.cols_count - 1, graph.rows_count - 1)
 
 
 def world_to_grid(wx, wy) -> Tuple[int, int]:
     return (wx // graph.cell_size, wy // graph.cell_size)
-
-
-def draw_grid_lines(width: int, height: int, cell_size: int, color=(50, 50, 250)):
-    for y in range(0, height, cell_size):
-        pg.draw.line(SCREEN, color, (0, y), (width, y), 2)
-    for x in range(0, width, cell_size):
-        pg.draw.line(SCREEN, color, (x, 0), (x, height), 2)
-
-
-def draw_grid():
-    for rows in graph.grid:
-        for node in rows:
-            draw_rect(node.color, node.rect)
-
-
-def clear_grid():
-    for row in graph.grid:
-        for node in row:
-            if node.is_block or node == start_node or node == goal_node:
-                continue
-            node.reset()
-            draw_rect(node.color, node.rect)
-
-    pg.display.update()
 
 
 def get_mouse_grid_pos():
@@ -56,8 +28,7 @@ def get_mouse_grid_pos():
 
 
 SCREEN.fill((0, 12, 12))
-draw_grid()
-pg.display.update()
+graph.draw_grid()
 
 while running:
     clock.tick(60)
@@ -70,37 +41,28 @@ while running:
         gx, gy = get_mouse_grid_pos()
 
         if left_ms:
-            graph.get_node(gx, gy).set_is_block(True)
+            node = graph.get_node(gx, gy)
+            graph.set_block(node, True)
 
         if right_ms:
-            graph.get_node(gx, gy).set_is_block(False)
+            node = graph.get_node(gx, gy)
+            graph.set_block(node, False)
 
         if event.type == KEYDOWN:
             if event.key == K_s:
-                gx, gy = get_mouse_grid_pos()
-                node = graph.get_node(gx, gy)
-                if not node.is_block and node != goal_node:
-                    start_node = node
-                draw_rect(node.color, node.rect)
-                pg.display.update()
+                graph.set_start(gx, gy)
 
             if event.key == K_g:
-                gx, gy = get_mouse_grid_pos()
-                node = graph.get_node(gx, gy)
-                if not node.is_block and node != start_node:
-                    goal_node = node
-                draw_rect(RED, node.rect)
-                pg.display.update()
+                graph.set_goal(gx, gy)
 
             if event.key == K_SPACE:
-                clear_grid()
-                path = a_star(start_node, goal_node, graph)
+                graph.clear_grid()
+                path = a_star(graph)
 
-                for node in path:
-                    node.tick(PURPLE)
+                for p in path[1:-1]:
+                    p.set_state(PATH)
+                    graph.update_node(p)
 
-                start_node.tick(GREEN)
-                goal_node.tick(RED)
 
 pg.quit()
 
