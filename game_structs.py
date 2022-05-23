@@ -1,3 +1,4 @@
+import random
 from typing import List, Tuple
 import pygame as pg
 ColorTuple = Tuple[int, int, int]
@@ -128,10 +129,6 @@ class Graph:
                 continue
 
             neighbor = self.grid[next_y][next_x]
-
-            if neighbor.is_block:
-                continue
-
             neighbor_list.append(neighbor)
 
         return neighbor_list
@@ -185,7 +182,7 @@ class Graph:
         node.draw(self.SCREEN)
         pg.display.update()
 
-    def clear_grid(self):
+    def reset_grid(self):
         for row in self.grid:
             for node in row:
                 if node.is_block or node == self.start or node == self.goal:
@@ -193,6 +190,42 @@ class Graph:
                 node.reset()
                 node.draw(self.SCREEN)
         pg.display.update()
+
+    def clear_grid(self):
+        for row in self.grid:
+            for node in row:
+                if node == self.start or node == self.goal:
+                    continue
+                node.set_state(EMPTY)
+                node.draw(self.SCREEN)
+        pg.display.update()
+
+    def gen_map(self):
+        self.start, self.goal = None, None
+
+        for row in self.grid:
+            for node in row:
+                state = BLOCK if random.random() <= 0.23 else EMPTY
+                node.set_state(state)
+
+        self.erosion()
+
+    def erosion(self, times=4):
+        for _ in range(times):
+            for row in self.grid:
+                for node in row:
+                    neighbors = [n for n in self.get_neighbors(
+                        node) if n.is_block]
+                    n = len(neighbors)
+                    dn = 8 - n
+
+                    if n < 2 or n > 4:  # dies
+                        node.set_state(EMPTY)
+                    if n == 3 or dn == 5:  # revives
+                        node.set_state(BLOCK)
+
+                    node.draw(self.SCREEN)
+                pg.display.update()
 
     def print_graph(self):
         for rows in self.grid:

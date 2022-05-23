@@ -1,6 +1,6 @@
 from math import sqrt
 from queue import PriorityQueue
-from typing import List
+from typing import List, Set
 from game_structs import NEIGHBOR, Node, Graph
 
 
@@ -18,7 +18,7 @@ def get_distance(a: Node, b: Node) -> int:
 
 def a_star(graph: Graph) -> List[Node]:
     closed_nodes: List[Node] = []
-    visited_nodes: List[Node] = []
+    visited_nodes: Set[Node] = set()
 
     start_node, goal_node = graph.start, graph.goal
     start_node.G = 0
@@ -43,7 +43,7 @@ def a_star(graph: Graph) -> List[Node]:
             return path
 
         for neighbor in graph.get_neighbors(current):
-            if neighbor in closed_nodes:
+            if neighbor in closed_nodes or neighbor.is_block:
                 continue
 
             # draw stuff
@@ -58,12 +58,12 @@ def a_star(graph: Graph) -> List[Node]:
             if new_cost < neighbor.G or unvisited:
                 neighbor.set_G(new_cost)
                 neighbor.set_parent(current)
+                pq.put((neighbor.F(), neighbor))
                 # print(f"{current} -> {neighbor} G cost={neighbor.G}")
 
                 if unvisited:
                     neighbor.set_H(get_distance(neighbor, goal_node))
-                    pq.put((neighbor.F(), neighbor))
-                    visited_nodes.append(neighbor)
+                    visited_nodes.add(neighbor)
     return []
 
 

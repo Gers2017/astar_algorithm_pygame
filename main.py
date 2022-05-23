@@ -6,7 +6,7 @@ from game_structs import Graph, PATH
 
 width, height = 1024, 704
 size = (width, height)
-cell_size = 16
+cell_size = 8
 SCREEN = pg.display.set_mode(size)
 graph = Graph(width, height, cell_size, SCREEN)
 
@@ -27,7 +27,6 @@ def get_mouse_grid_pos():
     return world_to_grid(x, y)
 
 
-SCREEN.fill((0, 12, 12))
 graph.draw_grid()
 
 while running:
@@ -55,8 +54,19 @@ while running:
             if event.key == K_g:
                 graph.set_goal(gx, gy)
 
-            if event.key == K_SPACE:
+            if event.key == K_m:
+                graph.gen_map()
+
+            if event.key == K_e:
+                graph.erosion(1)
+
+            if event.key == K_c:
                 graph.clear_grid()
+
+            if event.key == K_SPACE:
+                graph.reset_grid()
+                if graph.start == None or graph.goal == None:
+                    continue
                 path = a_star(graph)
 
                 for p in path[1:-1]:
@@ -65,9 +75,3 @@ while running:
 
 
 pg.quit()
-
-# draw_grid_lines(width, height, cell_size)
-# pg.display.update()
-# rat_img = pg.image.load("rat.png")
-# rat_img = pg.transform.scale(rat_img, (cell_size, cell_size))
-# screen.blit(rat_img, pos)
